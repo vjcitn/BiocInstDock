@@ -6,6 +6,10 @@ intentionally broken in instructive ways: O(n²) algorithms, cache-hostile memor
 access, and `malloc` calls with no matching `free`.  Each flaw is designed to be
 caught by a different tool in the profiling stack.
 
+The container runs **RStudio Server**, so `profvis` flame graphs and other HTML
+reports render directly in a browser at `http://localhost:8787` — no extra setup
+required.
+
 ---
 
 ## Tools demonstrated
@@ -49,12 +53,56 @@ cd BiocInstDock
 docker build -t profdemo .
 ```
 
-The build installs Valgrind, Linux perf tools, Google perftools, and the
-`profvis` / `bench` R packages, then compiles and installs **profdemo**.
+The build installs Valgrind, Linux perf tools, Google perftools, RStudio Server,
+and the `profvis` / `bench` R packages, then compiles and installs **profdemo**.
 
 ---
 
-## Running the demos
+## RStudio Server — interactive profvis in the browser
+
+Start the container and open RStudio in any browser:
+
+```bash
+docker run --rm -p 8787:8787 -e PASSWORD=rstudio profdemo
+```
+
+Then navigate to **http://localhost:8787** and log in:
+
+| Field | Value |
+|-------|-------|
+| Username | `rstudio` |
+| Password | `rstudio` |
+
+From the RStudio console, run the profvis demo and the flame graph opens
+automatically in the **Viewer** pane:
+
+```r
+source(system.file("demo/01_profvis_demo.R", package = "profdemo"))
+```
+
+Or interactively:
+
+```r
+library(profdemo)
+library(profvis)
+
+x <- runif(5000)
+profvis({
+  for (i in 1:20) slow_sort(x)      # bubble sort — wide bar
+  for (i in 1:20) sort(x)           # radix sort  — invisible
+})
+```
+
+To persist work between sessions mount a host directory:
+
+```bash
+docker run --rm -p 8787:8787 -e PASSWORD=rstudio \
+  -v "$HOME/profdemo_work:/home/rstudio" profdemo
+```
+
+---
+
+## Running the demos from the command line
 
 ### bench — timing and allocation comparisons
 
@@ -69,7 +117,7 @@ Example output (arm64):
   expression     min  median `itr/sec`
   bubble      3.94ms  3.94ms      253.     # O(n^2) bubble sort
   builtin    65.58µs 70.48µs    13906.     # R's radix sort — 56x faster
-  
+
 ── 2. Cumulative sum (n = 2 000) ───────────────────────────────────
   quadratic    985µs  1.02ms      982.     # re-sums from 0 each step
   builtin       15µs 17.02µs    58509.     # single pass — 60x faster
@@ -90,14 +138,13 @@ line:
 
 ```
 === Valgrind: slow_sort ===
-==8== 80,000 bytes in 10 blocks are definitely lost in loss record 1,293 of 1,411
-==8==    by 0x...: slow_sort (sorting.c:25)       ← scratch buffer, line 25
-==8==    by 0x...: R_doDotCall (dotcode.c:754)
-...
+==8== 80,000 bytes in 10 blocks are definitely lost
+==8==    by 0x...: slow_sort (sorting.c:25)        ← scratch buffer, line 25
+
 === Valgrind: leaky_matmul ===
 ==32== 1,600,000 bytes in 5 blocks are definitely lost
-==32==    by 0x...: leaky_matmul (matrix_ops.c:62) ← result buffer, line 62
-...
+==32==    by 0x...: leaky_matmul (matrix_ops.c:62)  ← result buffer, line 62
+
 === Valgrind: slow_string_join ===
 ==56== 7,030 bytes in 270 blocks are definitely lost
 ==56==    by 0x...: slow_string_join (string_ops.c:29)  ← initial malloc
@@ -118,29 +165,6 @@ docker run --rm --privileged profdemo bash /workspace/profdemo/inst/demo/03_perf
 Compares cache-reference and cache-miss counts between `cache_unfriendly_colsum`
 (row-first traversal of a column-major matrix) and `colSums()`.
 
-### profvis — interactive flame graphs
-
-`profvis` generates HTML flame graphs; run this on a host with a browser or save
-the widget to a file:
-
-```r
-# Inside the container:  docker run --rm -it profdemo R
-library(profdemo)
-library(profvis)
-
-x <- runif(5000)
-profvis({
-  for (i in 1:20) slow_sort(x)
-  for (i in 1:20) sort(x)
-})
-```
-
-Or run the full profvis session script:
-
-```bash
-docker run --rm profdemo Rscript /workspace/profdemo/inst/demo/01_profvis_demo.R
-```
-
 ### Run all demos at once
 
 ```bash
@@ -153,7 +177,7 @@ docker run --rm --privileged profdemo bash /workspace/scripts/run_all_demos.sh
 
 ```
 BiocInstDock/
-├── Dockerfile                        # builds the profiling environment
+├── Dockerfile                        # rocker/rstudio base + profiling tools
 ├── profdemo/                         # R package with intentionally flawed C code
 │   ├── DESCRIPTION
 │   ├── NAMESPACE
@@ -167,7 +191,7 @@ BiocInstDock/
 │   │   ├── string_ops.c              # Flaws 7–8
 │   │   └── register.c                # R_registerRoutines
 │   └── inst/demo/
-│       ├── 01_profvis_demo.R         # flame graph session
+│       ├── 01_profvis_demo.R         # profvis flame graph session
 │       ├── 02_valgrind_demo.sh       # Valgrind leak reports
 │       ├── 03_perf_demo.sh           # Linux perf cache stats
 │       └── 04_bench_demo.R           # bench timing comparisons
@@ -179,7 +203,7 @@ BiocInstDock/
 
 ## Multi-architecture support
 
-The base image (`rocker/r-ver`) publishes manifests for both `linux/amd64` and
+The base image (`rocker/rstudio`) publishes manifests for both `linux/amd64` and
 `linux/arm64`.  All apt packages are available on both architectures.  Build on
 whichever host you have and the image will be native.  To produce a single
 multi-arch manifest for a registry:

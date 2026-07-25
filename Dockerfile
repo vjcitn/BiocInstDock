@@ -1,4 +1,4 @@
-FROM rocker/r-ver:latest
+FROM rocker/rstudio:latest
 
 # 1. System tools: Valgrind, Linux Perf, Google Performance Tools, build deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -28,5 +28,5 @@ COPY scripts/ /workspace/scripts/
 # 6. Make shell demo scripts executable
 RUN find /workspace -name "*.sh" -exec chmod +x {} \;
 
-# Default: drop into an interactive R session
-CMD ["R", "--vanilla"]
+# RStudio Server listens on 8787; default credentials are rstudio / rstudio
+EXPOSE 8787
