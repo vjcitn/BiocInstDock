@@ -1,0 +1,6 @@
+useDynLib(profdemo)
+export(slow_sort)
+export(slow_cumsum)
+export(cache_unfriendly_colsum)
+export(leaky_matmul)
+export(slow_string_join)

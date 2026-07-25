@@ -1,0 +1,13 @@
+Package: profdemo
+Title: Demonstration Package for C Profiling and Debugging
+Version: 0.1.0
+Authors@R: person("Demo", "Author", email = "demo@example.com", role = c("aut", "cre"))
+Description: Provides intentionally flawed C routines illustrating common
+    performance pitfalls — O(n^2) algorithms, cache-unfriendly memory traversal,
+    redundant recomputation — and memory errors (malloc without free) that are
+    detectable by Valgrind, Linux perf, and the R-level profvis package.
+    Intended as a teaching aid for C-level profiling and debugging inside R.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends: R (>= 4.0.0)
+NeedsCompilation: yes
