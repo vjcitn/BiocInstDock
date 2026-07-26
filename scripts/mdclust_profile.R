@@ -1,0 +1,135 @@
+# mdclust_profile.R
+#
+# Exercises the two C++ entry points in the mdclust package:
+#   mdc_init_cpp()    — centroid initialisation (k-means++ or k-means)
+#   mdc_cluster_cpp() — main iterative clustering loop
+#
+# Suitable for:
+#   Valgrind:   R -d "valgrind --tool=memcheck --leak-check=full \
+#                 --show-leak-kinds=definite" \
+#                 --no-save --no-restore --file=mdclust_profile.R
+#
+#   gperftools: LD_PRELOAD=<libprofiler.so> CPUPROFILE=/workspace/mdclust.prof \
+#                 R --no-save --no-restore --file=mdclust_profile.R
+#
+#   profvis:    source this file inside profvis({}) in RStudio
+#
+# Installation (run once before profiling):
+#   CFLAGS='-g -O0' CXXFLAGS='-g -O0' \
+#     R CMD INSTALL --preclean /workspace/mdclust
+#
+# The package must be cloned and installed with debug symbols first:
+#   cd /workspace && git clone https://github.com/Herbermann/mdclust
+#   mkdir -p ~/.R
+#   echo 'CFLAGS   = -g -O0' >> ~/.R/Makevars
+#   echo 'CXXFLAGS = -g -O0' >> ~/.R/Makevars
+#   R CMD INSTALL --preclean mdclust
+
+library(mdclust)
+
+set.seed(42)
+
+# ── Helper: simulate a batch-structured embedding ─────────────────────────────
+# d  = embedding dimensions (e.g. number of PCs)
+# N  = number of cells
+# K  = true number of biological clusters
+# B  = number of batches
+# batch_effect = magnitude of additive batch noise
+sim_data <- function(d, N, K, B, batch_effect = 0.5) {
+    cells_per_cluster <- N %/% K
+    # biological signal: K cluster centres in d dimensions
+    centres <- matrix(rnorm(d * K, sd = 2), nrow = d)
+    labels  <- rep(seq_len(K), each = cells_per_cluster, length.out = N)
+    Z       <- centres[, labels, drop = FALSE] + matrix(rnorm(d * N, sd = 0.3), d, N)
+    # batch labels and additive batch effect
+    batch   <- factor(rep(seq_len(B), length.out = N))
+    for (b in seq_len(B)) {
+        idx      <- which(batch == b)
+        Z[, idx] <- Z[, idx] + rnorm(d, sd = batch_effect)
+    }
+    list(Z = Z, batch = batch, true_labels = labels)
+}
+
+# ── 1. Warm-up: tiny run to load the shared library ───────────────────────────
+# Exercises both mdc_init_cpp (kmeans++) and mdc_cluster_cpp.
+cat("-- warm-up (d=6, N=60, K=3, B=2) --\n")
+dat <- sim_data(d = 6, N = 60, K = 3, B = 2)
+fit <- mdclust(dat$Z, dat$batch, K = 3, verbose = FALSE)
+cat("   converged:", fit$converged, "  iters:", length(fit$objective$total), "\n\n")
+
+# ── 2. Scale N — main cluster loop dominates ──────────────────────────────────
+# mdc_cluster_cpp iterates over blocks of cells; cost grows linearly in N.
+# Useful for seeing the cost of update_R_block() and compute_objective().
+cat("-- scaling N (d=20, K=5, B=3) --\n")
+for (N in c(500, 2000, 5000)) {
+    dat <- sim_data(d = 20, N = N, K = 5, B = 3)
+    t   <- system.time(
+        fit <- mdclust(dat$Z, dat$batch, K = 5,
+                       max_iter = 50, verbose = FALSE)
+    )
+    cat(sprintf("   N=%5d  elapsed=%.2fs  converged=%s\n",
+                N, t["elapsed"], fit$converged))
+}
+cat("\n")
+
+# ── 3. block_size effect — controls stochastic update granularity ─────────────
+# Smaller block_size = more block iterations per epoch inside mdc_cluster_cpp.
+# Stress-tests the O/E contingency update and omega computation.
+cat("-- block_size sweep (d=20, N=2000, K=5, B=3) --\n")
+dat <- sim_data(d = 20, N = 2000, K = 5, B = 3)
+for (bs in c(0.5, 0.1, 0.02)) {
+    t <- system.time(
+        fit <- mdclust(dat$Z, dat$batch, K = 5,
+                       block_size = bs, max_iter = 50, verbose = FALSE)
+    )
+    cat(sprintf("   block_size=%.2f  elapsed=%.2fs  converged=%s\n",
+                bs, t["elapsed"], fit$converged))
+}
+cat("\n")
+
+# ── 4. theta sweep — diversity penalty changes omega computation cost ──────────
+# theta=0 collapses to plain spherical k-means (no diversity term);
+# larger theta stresses compute_theta_b() and compute_omega().
+cat("-- theta sweep (d=20, N=2000, K=5, B=3) --\n")
+dat <- sim_data(d = 20, N = 2000, K = 5, B = 3)
+for (th in c(0, 1, 5)) {
+    t <- system.time(
+        fit <- mdclust(dat$Z, dat$batch, K = 5,
+                       theta = th, max_iter = 50, verbose = FALSE)
+    )
+    cat(sprintf("   theta=%.0f  elapsed=%.2fs  converged=%s\n",
+                th, t["elapsed"], fit$converged))
+}
+cat("\n")
+
+# ── 5. Initialisation methods — exercises mdc_init_cpp() ──────────────────────
+# "kmeans++" uses weighted distance sampling; "kmeans" uses uniform sampling.
+cat("-- init method comparison (d=20, N=2000, K=10, B=3) --\n")
+dat <- sim_data(d = 20, N = 2000, K = 10, B = 3)
+for (method in c("kmeans++", "kmeans")) {
+    t <- system.time(
+        fit <- mdclust(dat$Z, dat$batch, K = 10,
+                       Y_init = method, max_iter = 50, verbose = FALSE)
+    )
+    cat(sprintf("   init=%-10s  elapsed=%.2fs  converged=%s\n",
+                method, t["elapsed"], fit$converged))
+}
+cat("\n")
+
+# ── 6. Sustained load for CPU profiling ───────────────────────────────────────
+# Uses a large N and tight convergence tolerance so the profiler accumulates
+# meaningful samples across update_R_block(), compute_omega(), and the
+# centroid update inside mdc_cluster_cpp().
+# epsilon=0 disables early stopping so max_iter iterations always run.
+cat("-- sustained run for CPU profiler (d=30, N=50000, K=8, B=4) --\n")
+dat <- sim_data(d = 30, N = 50000, K = 8, B = 4)
+for (rep in seq_len(5)) {
+    fit <- mdclust(dat$Z, dat$batch, K = 8,
+                   theta = 2, sigma = 0.1, block_size = 0.05,
+                   max_iter = 20, epsilon = 0, verbose = FALSE)
+    cat(sprintf("   rep=%d  iters=%d\n",
+                rep, length(fit$objective$total)))
+}
+
+cat("\nDone.\n")
+q(save = "no")
