@@ -10,6 +10,10 @@ The container runs **RStudio Server**, so `profvis` flame graphs and other HTML
 reports render directly in a browser at `http://localhost:8787` — no extra setup
 required.
 
+[`ellmer`](https://ellmer.tidyverse.org/) and [`btw`](https://posit-dev.github.io/btw/)
+are also pre-installed, so users can interrogate code and results with an LLM
+directly from the R console without leaving the container.
+
 ---
 
 ## Tools demonstrated
@@ -20,6 +24,8 @@ required.
 | [`bench`](https://bench.r-lib.org/) | Wall-clock and allocation comparisons between slow and fast versions |
 | [Valgrind memcheck](https://valgrind.org/) | Exact `malloc` leak sites with full C stack traces |
 | [Linux perf](https://perf.wiki.kernel.org/) | Hardware cache-miss rates for memory-access pattern analysis |
+| [`ellmer`](https://ellmer.tidyverse.org/) | Chat with LLMs (Claude, GPT-4o, Gemini, …) from the R console |
+| [`btw`](https://posit-dev.github.io/btw/) | Share R session context with an LLM to get grounded, accurate help |
 
 ---
 
@@ -74,7 +80,8 @@ Then navigate to **http://localhost:8787** and log in:
 | Password | `rstudio` |
 
 From the RStudio console, run the profvis demo and the flame graph opens
-automatically in the **Viewer** pane:
+in a pop-up viewer overlay (RStudio Server behaviour — click the external-link
+icon to open it as a standalone browser tab):
 
 ```r
 source(system.file("demo/01_profvis_demo.R", package = "profdemo"))
@@ -170,6 +177,59 @@ Compares cache-reference and cache-miss counts between `cache_unfriendly_colsum`
 ```bash
 docker run --rm --privileged profdemo bash /workspace/scripts/run_all_demos.sh
 ```
+
+---
+
+## Using LLMs from R (ellmer + btw)
+
+`ellmer` and `btw` are pre-installed so you can ask an LLM questions about your
+profiling results without leaving RStudio.
+
+### Quick start with ellmer
+
+```r
+library(ellmer)
+
+# Pick a provider — set the matching API key as an environment variable first:
+#   Sys.setenv(ANTHROPIC_API_KEY = "sk-ant-...")
+#   Sys.setenv(OPENAI_API_KEY    = "sk-...")
+chat <- chat_claude()   # or chat_openai(), chat_gemini(), …
+chat$chat("What is the time complexity of bubble sort and why is it slow for large n?")
+```
+
+### Providing R session context with btw
+
+`btw` lets you snapshot your current session — loaded packages, data frames,
+function definitions — and attach it as context before asking a question:
+
+```r
+library(ellmer)
+library(btw)
+library(profdemo)
+
+x     <- runif(3000)
+slow  <- system.time(slow_sort(x))
+fast  <- system.time(sort(x))
+
+chat <- chat_claude()
+chat$chat(btw(
+  "I measured two sort implementations:",
+  slow, fast,
+  "The slow one uses a C bubble sort. Why is it so much slower,
+   and what would a better replacement look like in C?"
+))
+```
+
+> **API keys:** `ellmer` reads keys from environment variables
+> (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, etc.).
+> Pass them at container start time so they are never baked into the image:
+>
+> ```bash
+> docker run --rm -p 8787:8787 \
+>   -e PASSWORD=rstudio \
+>   -e ANTHROPIC_API_KEY=sk-ant-... \
+>   profdemo
+> ```
 
 ---
 
