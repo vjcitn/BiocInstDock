@@ -47,24 +47,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# 3. R packages — installed via apt (r2u binary) on amd64, CRAN source on arm64.
-#    On amd64 each line resolves in seconds; on arm64 apt finds nothing and
-#    install.packages() compiles from source as before.
-RUN ARCH=$(dpkg --print-architecture) \
-    && if [ "$ARCH" = "amd64" ]; then \
-        apt-get update && apt-get install -y --no-install-recommends \
-            r-cran-profvis \
-            r-cran-bench \
-            r-cran-memoise \
-            r-cran-xml2 \
-            r-cran-ellmer \
-            r-cran-btw \
-        && rm -rf /var/lib/apt/lists/*; \
-    else \
-        R -e "install.packages( \
-            c('profvis','bench','memoise','xml2','mcptools','ellmer','btw'), \
-            repos='https://cloud.r-project.org/')"; \
-    fi
+# 3. R packages — try apt (r2u binary) per package, fall back to CRAN if not found.
+#    This handles two cases cleanly: r2u available (fast binary), and r2u absent or
+#    a package not yet packaged (transparent source-build fallback).
+#    ellmer and btw are not yet in r2u so they always come from CRAN.
+RUN for pkg in profvis bench memoise xml2; do \
+        apt-get install -y --no-install-recommends "r-cran-${pkg}" 2>/dev/null \
+        || R -e "install.packages('${pkg}', repos='https://cloud.r-project.org/')"; \
+    done && rm -rf /var/lib/apt/lists/*
+
+# 4. ellmer and btw — not yet in r2u; installed from CRAN source on all arches.
+#    mcptools and httpuv (deps of btw) require zlib and libuv, already installed above.
+RUN R -e "install.packages( \
+        c('mcptools','ellmer','btw'), \
+        repos='https://cloud.r-project.org/')"
 
 WORKDIR /workspace
 
