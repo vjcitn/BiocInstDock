@@ -60,7 +60,8 @@ docker build -t profdemo .
 ```
 
 The build installs Valgrind, Linux perf tools, Google perftools, RStudio Server,
-and the `profvis` / `bench` R packages, then compiles and installs **profdemo**.
+`profvis`, `bench`, `ellmer`, `btw`, and their dependencies, then compiles and
+installs **profdemo**.
 
 ---
 
@@ -307,37 +308,26 @@ source lines rather than raw addresses.
 
 ### Step 1 — Install dependencies as binaries, recompile only the target
 
-Installing dependencies from source is slow and unnecessary — you only need
-debug symbols in the package you are profiling.  Use
-**[r2u](https://eddelbuettel.github.io/r2u/)** to get pre-built `.deb` packages
-for all of CRAN and Bioconductor in seconds, then recompile just the target
-package with `-g -O0`.
-
-> **Architecture note:** r2u supports **amd64 only**.  On arm64 (e.g. Docker
-> Desktop on Apple Silicon) `apt` will find no r2u packages and
-> `install.packages()` / `BiocManager::install()` falls back to CRAN source
-> builds automatically — the commands below work on both architectures, they
-> are just faster on amd64.
+You only need debug symbols in the package you are profiling — dependencies
+should stay as optimised release binaries so their performance is realistic.
+Use `apt-get install` to get the full dependency tree instantly (see the
+[r2u section](#installing-r-packages-at-session-time-r2u) above for naming
+conventions and the arm64 caveat), then recompile just the target with `-g -O0`.
 
 ```bash
 cd /workspace
 git clone https://github.com/username/reponame   # or Bioconductor URL
 
-# Install all dependencies as binaries via r2u (amd64) or CRAN source (arm64)
-apt-get install -y r-cran-reponame   # replaces R -e "install.packages(...)"
-# For Bioconductor packages:
-apt-get install -y r-bioc-deseq2     # installs DESeq2 + all deps as .deb
+# Install the package + all deps as binaries (amd64) or from source (arm64)
+apt-get install -y r-cran-reponame
+# For Bioconductor:  apt-get install -y r-bioc-deseq2
 
-# Now recompile only the target package with debug symbols
+# Recompile only the target with debug symbols
 mkdir -p ~/.R
 echo 'CFLAGS   = -g -O0' >> ~/.R/Makevars
 echo 'CXXFLAGS = -g -O0' >> ~/.R/Makevars
 R CMD INSTALL --preclean reponame
 ```
-
-This leaves all dependencies as optimised release binaries (so their
-performance is realistic) while the target package is compiled with full
-debug information for readable profiler and Valgrind output.
 
 ### Step 2 — Write a profiling script
 
@@ -378,16 +368,17 @@ dominates the profile with `__GI_sched_yield` calls and obscures your code.
 ```bash
 mkdir -p /workspace/perf_reports
 
+# Auto-detect the correct libprofiler path for this architecture
+PROFLIB=$(ldconfig -p | awk '/libprofiler\.so\.0/{print $NF}' | head -1)
+
 OPENBLAS_NUM_THREADS=1 \
   LD_LIBRARY_PATH=/usr/local/lib/R/lib:$LD_LIBRARY_PATH \
-  LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libprofiler.so.0 \
+  LD_PRELOAD="$PROFLIB" \
   CPUPROFILE=/workspace/perf_reports/mypkg.prof \
   /usr/local/lib/R/bin/exec/R \
     --no-save --no-restore --quiet \
     --file=/workspace/scripts/mypkg_profile.R
 ```
-
-*(On amd64 replace `aarch64-linux-gnu` with `x86_64-linux-gnu`.)*
 
 ### Step 5 — Symbolise the profile
 
