@@ -50,9 +50,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 3. R packages — try apt (r2u binary) per package, fall back to CRAN if not found.
 #    This handles two cases cleanly: r2u available (fast binary), and r2u absent or
 #    a package not yet packaged (transparent source-build fallback).
-#    ellmer and btw are not yet in r2u so they always come from CRAN.
-RUN for pkg in profvis bench memoise xml2; do \
-        apt-get install -y --no-install-recommends "r-cran-${pkg}" 2>/dev/null \
+#    RcppArmadillo is included so packages like mdclust build without a separate
+#    dependency install step.
+RUN for pkg in profvis bench memoise xml2 RcppArmadillo; do \
+        apt-get install -y --no-install-recommends "r-cran-$(echo $pkg | tr '[:upper:]' '[:lower:]')" 2>/dev/null \
         || R -e "install.packages('${pkg}', repos='https://cloud.r-project.org/')"; \
     done && rm -rf /var/lib/apt/lists/*
 

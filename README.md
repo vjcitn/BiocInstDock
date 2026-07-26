@@ -60,8 +60,48 @@ docker build -t profdemo .
 ```
 
 The build installs Valgrind, Linux perf tools, Google perftools, RStudio Server,
-`profvis`, `bench`, `ellmer`, `btw`, and their dependencies, then compiles and
-installs **profdemo**.
+`profvis`, `bench`, `ellmer`, `btw`, `RcppArmadillo`, and their dependencies,
+then compiles and installs **profdemo**.
+
+---
+
+## Rapid uptake — pull from Docker Hub (no build required)
+
+A pre-built amd64 image is available on Docker Hub as `vjcitn/biocinstdoc:0.0.1`.
+
+### On a Linux (amd64) host
+
+```bash
+# Command-line session
+docker run -ti vjcitn/biocinstdoc:0.0.1 /bin/bash
+
+# RStudio Server in the browser at http://localhost:8787
+docker run --rm -p 8787:8787 -e PASSWORD=rstudio vjcitn/biocinstdoc:0.0.1
+```
+
+### On a Mac (Apple Silicon — arm64 host)
+
+Apple Silicon Macs run Docker containers natively on arm64, but the Docker Hub
+image is amd64-only.  Use `--platform=linux/amd64` to pull and run it under
+Rosetta 2 emulation:
+
+```bash
+# Command-line session
+docker run -ti --platform=linux/amd64 \
+  --entrypoint=/bin/bash \
+  vjcitn/biocinstdoc:0.0.1
+
+# RStudio Server in the browser at http://localhost:8787
+docker run --rm --platform=linux/amd64 \
+  -p 8787:8787 -e PASSWORD=rstudio \
+  vjcitn/biocinstdoc:0.0.1
+```
+
+Running under emulation is slower than a native arm64 build, but gives access
+to r2u binary packages (amd64-only) so session-time installs via
+`apt-get install r-bioc-*` are fast.  For sustained profiling work on Apple
+Silicon, build a native arm64 image from source instead (see **Build the image**
+above).
 
 ---
 
