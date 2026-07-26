@@ -260,6 +260,117 @@ docker run --rm -p 8787:8787 \
 
 ---
 
+## Profiling an external package from source
+
+The same toolchain that analyses `profdemo` applies to any R package with C or
+C++ code.  The key requirement is that the package is compiled with **debug
+symbols and no optimisation** (`-g -O0`) so that profiler output resolves to
+source lines rather than raw addresses.
+
+### Step 1 — Clone and install with debug symbols
+
+```bash
+cd /workspace
+git clone https://github.com/username/reponame
+
+# Tell R's compiler to include debug info and disable inlining
+mkdir -p ~/.R
+echo 'CFLAGS   = -g -O0' >> ~/.R/Makevars
+echo 'CXXFLAGS = -g -O0' >> ~/.R/Makevars
+
+# Install any missing dependencies first, then the package itself
+R -e "install.packages(c('dep1', 'dep2'), repos='https://cloud.r-project.org/')"
+R CMD INSTALL --preclean reponame
+```
+
+### Step 2 — Write a profiling script
+
+Create a script (`/workspace/scripts/mypkg_profile.R`) that:
+
+- Loads the package and constructs realistic inputs
+- Has a **warm-up section** (small inputs, exercises all code paths once)
+- Has a **scaling section** (varying N or other size parameters with `system.time`)
+- Has a **sustained section** (large inputs, `epsilon = 0` or high `max_iter` to
+  prevent early convergence, repeated runs) so the CPU profiler accumulates enough
+  samples to resolve individual functions
+
+See `scripts/mdclust_profile.R` for a worked example against the
+[mdclust](https://github.com/Herbermann/mdclust) package.
+
+### Step 3 — Valgrind (memory leaks and errors)
+
+```bash
+R -d "valgrind --tool=memcheck --leak-check=full --show-leak-kinds=definite" \
+  --no-save --no-restore \
+  --file=/workspace/scripts/mypkg_profile.R
+```
+
+Stack traces will name the C/C++ source file and line number for every
+`definitely lost` block, provided the package was built with `-g`.
+
+### Step 4 — gperftools CPU profiler
+
+On Docker Desktop (Mac/Windows) `perf stat` is unavailable because the
+container runs on a linuxkit kernel.  Use the gperftools profiler instead,
+which is user-space and works everywhere.
+
+**Important:** run the real R binary directly (not the `R` wrapper script) and
+set `LD_LIBRARY_PATH` so it can find `libR.so`.  Also set
+`OPENBLAS_NUM_THREADS=1` to suppress OpenBLAS thread-spinning, which otherwise
+dominates the profile with `__GI_sched_yield` calls and obscures your code.
+
+```bash
+mkdir -p /workspace/perf_reports
+
+OPENBLAS_NUM_THREADS=1 \
+  LD_LIBRARY_PATH=/usr/local/lib/R/lib:$LD_LIBRARY_PATH \
+  LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libprofiler.so.0 \
+  CPUPROFILE=/workspace/perf_reports/mypkg.prof \
+  /usr/local/lib/R/bin/exec/R \
+    --no-save --no-restore --quiet \
+    --file=/workspace/scripts/mypkg_profile.R
+```
+
+*(On amd64 replace `aarch64-linux-gnu` with `x86_64-linux-gnu`.)*
+
+### Step 5 — Symbolise the profile
+
+gperftools writes one file per forked subprocess.  The largest file is the main
+R process.
+
+```bash
+# Identify the largest profile file
+ls -lSh /workspace/perf_reports/mypkg.prof*
+
+# Text report — use the real R binary for symbol lookup
+google-pprof --text \
+  /usr/local/lib/R/bin/exec/R \
+  $(ls -S /workspace/perf_reports/mypkg.prof* | head -1)
+```
+
+Useful pprof commands in interactive mode (`google-pprof` with no `--text`):
+
+| Command | Effect |
+|---------|--------|
+| `top20` | Top 20 functions by self samples |
+| `top20 -cum` | Top 20 by cumulative (inclusive) samples |
+| `list funcname` | Annotate source lines for functions matching `funcname` |
+| `pdf` | Write a call-graph PDF to `/tmp/pprof.*.pdf` |
+| `quit` | Exit |
+
+### Reading the output
+
+| Symbol pattern | Likely source |
+|----------------|---------------|
+| `__GI_sched_yield` + `openblas_read_env` | OpenBLAS thread spinning — set `OPENBLAS_NUM_THREADS=1` |
+| `arma::Proxy::operator[]` / `arma::eOp` | Armadillo lazy expression evaluation (element-wise ops) |
+| `arma::op_shuffle::apply_direct` | Per-iteration data shuffle — cost grows linearly with N |
+| `std::__unguarded_partition` | `std::sort` inside initialisation |
+| `dgemm_kernel_*` | BLAS matrix multiply (centroid update) |
+| `__GI___exp` / `__log_finite` | Softmax / log-likelihood in the inner loop |
+
+---
+
 ## Repository layout
 
 ```
@@ -283,7 +394,8 @@ BiocInstDock/
 │       ├── 03_perf_demo.sh           # Linux perf cache stats
 │       └── 04_bench_demo.R           # bench timing comparisons
 └── scripts/
-    └── run_all_demos.sh              # orchestrates all four demos
+    ├── run_all_demos.sh              # orchestrates all four demos
+    └── mdclust_profile.R             # worked example: profiling an external package
 ```
 
 ---
