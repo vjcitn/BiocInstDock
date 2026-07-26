@@ -88,6 +88,11 @@ else
 
     PPROF=$(command -v google-pprof pprof 2>/dev/null | head -1 || true)
 
+    # The real R binary (not the bash wrapper). Must be invoked directly so
+    # that gperftools' SIGPROF handler is installed before the profiling timer
+    # fires — using the wrapper causes "Profiling timer expired" and process death.
+    R_BINARY=/usr/local/lib/R/bin/exec/R
+
     gperf_run() {
         local tag="$1"
         local rcode="$2"
@@ -99,17 +104,19 @@ else
 
         echo "=== gperftools: $tag ==="
 
-        # Use R shell wrapper (not the raw binary) so libR.so is on the path.
-        # LD_PRELOAD and CPUPROFILE are inherited through the exec chain.
+        # Run the real R binary directly with libR.so on the library path.
+        # LD_PRELOAD must be set before exec so gperftools registers its
+        # SIGPROF handler in the same process that runs the R code.
+        LD_LIBRARY_PATH=/usr/local/lib/R/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} \
         LD_PRELOAD="$PROFLIB" CPUPROFILE="$prof_out" \
-            R --no-save --no-restore --quiet --file="$script" \
+            "$R_BINARY" --no-save --no-restore --quiet --file="$script" \
             > /dev/null 2>&1 || true
 
         # gperftools writes one file per forked child; grab the largest
         BEST=$(ls -S "${prof_out}"* 2>/dev/null | head -1 || true)
 
         if [ -n "$BEST" ] && [ -s "$BEST" ] && [ -n "$PPROF" ]; then
-            $PPROF --text "$(which R)" "$BEST" > "$txt_out" 2>/dev/null || true
+            $PPROF --text "$R_BINARY" "$BEST" > "$txt_out" 2>/dev/null || true
             if [ -s "$txt_out" ]; then
                 echo "Top functions by CPU samples:"
                 head -15 "$txt_out" | sed 's/^/  /'
@@ -153,5 +160,5 @@ q(save='no')
 
     echo "All profile files in $OUTDIR/"
     echo "Interactive flame graph (if graphviz is installed):"
-    echo "  google-pprof --pdf \$(which R) ${OUTDIR}/sort_bubble.prof* > /workspace/sort_bubble.pdf"
+    echo "  google-pprof --pdf $R_BINARY ${OUTDIR}/sort_bubble.prof* > /workspace/sort_bubble.pdf"
 fi
