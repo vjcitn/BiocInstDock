@@ -67,16 +67,16 @@ then compiles and installs **profdemo**.
 
 ## Rapid uptake — pull from Docker Hub (no build required)
 
-A pre-built amd64 image is available on Docker Hub as `vjcitn/biocinstdoc:0.0.1`.
+A pre-built amd64 image is available on Docker Hub as `vjcitn/biocinstdoc:0.0.2`.
 
 ### On a Linux (amd64) host
 
 ```bash
 # Command-line session
-docker run -ti vjcitn/biocinstdoc:0.0.1 /bin/bash
+docker run -ti vjcitn/biocinstdoc:0.0.2 /bin/bash
 
 # RStudio Server in the browser at http://localhost:8787
-docker run --rm -p 8787:8787 -e PASSWORD=rstudio vjcitn/biocinstdoc:0.0.1
+docker run --rm -p 8787:8787 -e PASSWORD=rstudio vjcitn/biocinstdoc:0.0.2
 ```
 
 ### On a Mac (Apple Silicon — arm64 host)
@@ -89,12 +89,12 @@ Rosetta 2 emulation:
 # Command-line session
 docker run -ti --platform=linux/amd64 \
   --entrypoint=/bin/bash \
-  vjcitn/biocinstdoc:0.0.1
+  vjcitn/biocinstdoc:0.0.2
 
 # RStudio Server in the browser at http://localhost:8787
 docker run --rm --platform=linux/amd64 \
   -p 8787:8787 -e PASSWORD=rstudio \
-  vjcitn/biocinstdoc:0.0.1
+  vjcitn/biocinstdoc:0.0.2
 ```
 
 Running under emulation is slower than a native arm64 build, but gives access
