@@ -220,16 +220,43 @@ chat$chat(btw(
 ))
 ```
 
-> **API keys:** `ellmer` reads keys from environment variables
-> (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, etc.).
-> Pass them at container start time so they are never baked into the image:
->
-> ```bash
-> docker run --rm -p 8787:8787 \
->   -e PASSWORD=rstudio \
->   -e ANTHROPIC_API_KEY=sk-ant-... \
->   profdemo
-> ```
+### API keys and outbound networking
+
+`ellmer` reads provider credentials from standard environment variables:
+
+| Provider | Variable |
+|----------|----------|
+| Anthropic (Claude) | `ANTHROPIC_API_KEY` |
+| OpenAI (GPT-4o, o3, …) | `OPENAI_API_KEY` |
+| Google (Gemini) | `GEMINI_API_KEY` |
+
+Pass them at `docker run` time so they are never baked into the image:
+
+```bash
+docker run --rm -p 8787:8787 \
+  -e PASSWORD=rstudio \
+  -e ANTHROPIC_API_KEY=sk-ant-... \
+  profdemo
+```
+
+**No extra port mapping is needed for outbound API calls.**  When `ellmer`
+contacts a provider it opens an outbound HTTPS connection on port 443.
+Docker containers have outbound internet access by default — the host's
+network stack NATs the traffic out.  The `-p 8787:8787` flag only controls
+*inbound* connections to RStudio Server; it has no effect on outbound calls.
+
+If your host is behind a corporate proxy or firewall that restricts outbound
+HTTPS, pass the proxy settings into the container as well:
+
+```bash
+docker run --rm -p 8787:8787 \
+  -e PASSWORD=rstudio \
+  -e ANTHROPIC_API_KEY=sk-ant-... \
+  -e https_proxy=http://proxy.example.com:8080 \
+  -e http_proxy=http://proxy.example.com:8080 \
+  -e no_proxy=localhost,127.0.0.1 \
+  profdemo
+```
 
 ---
 
