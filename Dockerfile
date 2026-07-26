@@ -4,16 +4,26 @@ FROM rocker/rstudio:latest
 #    falls back to CRAN source builds transparently via install.packages()).
 #    r2u provides pre-built .deb packages for all of CRAN and Bioconductor,
 #    cutting R package installation from minutes to seconds on amd64.
+#
+#    The key is ASCII-armored (.asc) and must be dearmored before saving.
+#    The entire block is wrapped in || true so a network hiccup does not
+#    break the build — it just falls back to source installs.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         wget ca-certificates gpg \
     && ARCH=$(dpkg --print-architecture) \
     && if [ "$ARCH" = "amd64" ]; then \
-        wget -q -O /usr/share/keyrings/r2u-keyring.gpg \
-            https://eddelbuettel.github.io/r2u/assets/dirk_eddelbuettel_key.gpg && \
-        echo "deb [arch=amd64 signed-by=/usr/share/keyrings/r2u-keyring.gpg] \
+        ( wget -q -O- \
+            https://eddelbuettel.github.io/r2u/assets/dirk_eddelbuettel_key.asc \
+          | gpg --dearmor > /usr/share/keyrings/r2u-keyring.gpg \
+        && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/r2u-keyring.gpg] \
               https://r2u.stat.chicago.edu/ubuntu noble main" \
-            > /etc/apt/sources.list.d/r2u.list && \
-        apt-get update; \
+            > /etc/apt/sources.list.d/r2u.list \
+        && apt-get update \
+        ) || ( \
+            echo "WARNING: r2u setup failed — falling back to CRAN source builds" && \
+            rm -f /etc/apt/sources.list.d/r2u.list \
+                  /usr/share/keyrings/r2u-keyring.gpg \
+        ); \
     fi \
     && rm -rf /var/lib/apt/lists/*
 
