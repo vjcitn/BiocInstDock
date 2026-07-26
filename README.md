@@ -267,21 +267,39 @@ C++ code.  The key requirement is that the package is compiled with **debug
 symbols and no optimisation** (`-g -O0`) so that profiler output resolves to
 source lines rather than raw addresses.
 
-### Step 1 — Clone and install with debug symbols
+### Step 1 — Install dependencies as binaries, recompile only the target
+
+Installing dependencies from source is slow and unnecessary — you only need
+debug symbols in the package you are profiling.  Use
+**[r2u](https://eddelbuettel.github.io/r2u/)** to get pre-built `.deb` packages
+for all of CRAN and Bioconductor in seconds, then recompile just the target
+package with `-g -O0`.
+
+> **Architecture note:** r2u supports **amd64 only**.  On arm64 (e.g. Docker
+> Desktop on Apple Silicon) `apt` will find no r2u packages and
+> `install.packages()` / `BiocManager::install()` falls back to CRAN source
+> builds automatically — the commands below work on both architectures, they
+> are just faster on amd64.
 
 ```bash
 cd /workspace
-git clone https://github.com/username/reponame
+git clone https://github.com/username/reponame   # or Bioconductor URL
 
-# Tell R's compiler to include debug info and disable inlining
+# Install all dependencies as binaries via r2u (amd64) or CRAN source (arm64)
+apt-get install -y r-cran-reponame   # replaces R -e "install.packages(...)"
+# For Bioconductor packages:
+apt-get install -y r-bioc-deseq2     # installs DESeq2 + all deps as .deb
+
+# Now recompile only the target package with debug symbols
 mkdir -p ~/.R
 echo 'CFLAGS   = -g -O0' >> ~/.R/Makevars
 echo 'CXXFLAGS = -g -O0' >> ~/.R/Makevars
-
-# Install any missing dependencies first, then the package itself
-R -e "install.packages(c('dep1', 'dep2'), repos='https://cloud.r-project.org/')"
 R CMD INSTALL --preclean reponame
 ```
+
+This leaves all dependencies as optimised release binaries (so their
+performance is realistic) while the target package is compiled with full
+debug information for readable profiler and Valgrind output.
 
 ### Step 2 — Write a profiling script
 
@@ -395,7 +413,8 @@ BiocInstDock/
 │       └── 04_bench_demo.R           # bench timing comparisons
 └── scripts/
     ├── run_all_demos.sh              # orchestrates all four demos
-    └── mdclust_profile.R             # worked example: profiling an external package
+    ├── mdclust_profile.R             # worked example: mdclust (RcppArmadillo)
+    └── deseq2_profile.R              # worked example: DESeq2 (fitDisp/fitBeta)
 ```
 
 ---
