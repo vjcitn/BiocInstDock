@@ -260,6 +260,44 @@ docker run --rm -p 8787:8787 \
 
 ---
 
+## Installing R packages at session time (r2u)
+
+When you start a container session and want to install an R package that was not
+baked into the image, use **apt** rather than `install.packages()` wherever
+possible.  On amd64 the container has the
+[r2u](https://eddelbuettel.github.io/r2u/) repository configured, which
+provides pre-built `.deb` packages for every CRAN and Bioconductor package.
+Installation takes seconds instead of minutes because nothing is compiled.
+
+```bash
+# CRAN package
+apt-get install -y r-cran-ggplot2
+
+# Bioconductor package (installs the package + all its dependencies)
+apt-get install -y r-bioc-deseq2
+apt-get install -y r-bioc-summarizedexperiment
+```
+
+The naming convention is `r-cran-<lowercase-name>` and
+`r-bioc-<lowercase-name>`.  Hyphens in package names become hyphens in the
+`.deb` name (e.g. `r-cran-data-table`, `r-bioc-bioc-generics`).
+
+If a package is not yet in r2u, `apt-get install` simply returns "package not
+found" and you fall back to the usual:
+
+```r
+install.packages("mypkg")
+BiocManager::install("mypkg")
+```
+
+> **arm64 note:** r2u only publishes amd64 binaries.  On arm64 (Docker Desktop
+> on Apple Silicon) `apt-get install r-cran-*` will find nothing and you must
+> use `install.packages()` / `BiocManager::install()` instead, which compile
+> from source.  The profiling workflow below works identically on both
+> architectures; installs just take longer on arm64.
+
+---
+
 ## Profiling an external package from source
 
 The same toolchain that analyses `profdemo` applies to any R package with C or
