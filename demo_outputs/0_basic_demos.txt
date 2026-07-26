@@ -1,0 +1,224 @@
+root@041b8a26b675:/workspace# source scripts/run_all_demos.sh 
+========================================================
+ profdemo: C Profiling and Debugging Demonstration
+========================================================
+
+── bench comparisons ────────────────────────────────────
+
+── 1. Sorting (n = 3 000) ──────────────────────────────────────────
+# A tibble: 2 × 13
+  expression     min  median `itr/sec` mem_alloc `gc/sec` n_itr  n_gc total_time
+  <bch:expr> <bch:t> <bch:t>     <dbl> <bch:byt>    <dbl> <int> <dbl>   <bch:tm>
+1 bubble      21.8ms  21.8ms      45.8      33KB        0    20     0   436.89ms
+2 builtin    151.4µs 157.1µs    6161.      140KB        0    20     0     3.25ms
+# ℹ 4 more variables: result <list>, memory <list>, time <list>, gc <list>
+
+── 2. Cumulative sum (n = 2 000) ───────────────────────────────────
+# A tibble: 2 × 13
+  expression     min  median `itr/sec` mem_alloc `gc/sec` n_itr  n_gc total_time
+  <bch:expr> <bch:t> <bch:t>     <dbl> <bch:byt>    <dbl> <int> <dbl>   <bch:tm>
+1 quadratic   1.92ms  1.93ms      516.    18.2KB        0    50     0     96.8ms
+2 builtin     11.6µs  14.1µs    66274.    15.7KB        0    50     0    754.4µs
+# ℹ 4 more variables: result <list>, memory <list>, time <list>, gc <list>
+
+── 3. Column sums (1 000 x 1 000 matrix) ───────────────────────────
+# A tibble: 2 × 13
+  expression      min median `itr/sec` mem_alloc `gc/sec` n_itr  n_gc total_time
+  <bch:expr> <bch:tm> <bch:>     <dbl> <bch:byt>    <dbl> <int> <dbl>   <bch:tm>
+1 cache_bad    6.38ms 6.58ms      151.    7.64MB     16.8     9     1     59.6ms
+2 colSums      2.21ms 2.22ms      449.    7.86KB      0      10     0     22.3ms
+# ℹ 4 more variables: result <list>, memory <list>, time <list>, gc <list>
+
+── 4. Matrix multiply (200 x 200) ──────────────────────────────────
+# A tibble: 2 × 13
+  expression     min  median `itr/sec` mem_alloc `gc/sec` n_itr  n_gc total_time
+  <bch:expr> <bch:t> <bch:t>     <dbl> <bch:byt>    <dbl> <int> <dbl>   <bch:tm>
+1 naive_leak  10.3ms  10.4ms      96.0     942KB       0      5     0     52.1ms
+2 builtin    154.6µs 158.3µs    6230.      313KB    1557.     4     1    642.1µs
+# ℹ 4 more variables: result <list>, memory <list>, time <list>, gc <list>
+
+── 5. String join (200 words) ───────────────────────────────────────
+# A tibble: 2 × 13
+  expression      min median `itr/sec` mem_alloc `gc/sec` n_itr  n_gc total_time
+  <bch:expr> <bch:tm> <bch:>     <dbl> <bch:byt>    <dbl> <int> <dbl>   <bch:tm>
+1 leaky_join   21.1µs 27.3µs    34893.    5.33KB        0   100     0     2.87ms
+2 paste        19.6µs 19.8µs    48174.    1.61KB        0   100     0     2.08ms
+# ℹ 4 more variables: result <list>, memory <list>, time <list>, gc <list>
+
+Note: bench::mark() reports median time and total allocated memory.
+ Memory figures include R heap allocations; C-level leaks are not
+ counted here — use Valgrind (02_valgrind_demo.sh) for those.
+
+── Valgrind memory-leak reports ─────────────────────────
+=== Valgrind: slow_sort ===
+==73== 80,000 bytes in 10 blocks are definitely lost in loss record 1,294 of 1,410
+==73==    by 0x566BB681: slow_sort (sorting.c:25)
+==73==    by 0x496060D: R_doDotCall (dotcode.c:754)
+==73==    by 0x4960B86: do_dotcall (dotcode.c:1437)
+==73==    by 0x49A8695: bcEval_loop (eval.c:8682)
+==73==    by 0x49B06C9: bcEval (eval.c:7515)
+==73==    by 0x49B06C9: bcEval (eval.c:7500)
+==73==    by 0x49B8B50: R_compileAndExecute (eval.c:1941)
+==73==    by 0x49B92E9: do_for (eval.c:2777)
+==73==    by 0x49B0E7F: Rf_eval (eval.c:1232)
+==73==    by 0x49EAC42: Rf_ReplIteration (main.c:264)
+==73==    by 0x49EB097: R_ReplConsole (main.c:317)
+==73==    by 0x49EB14F: run_Rmainloop (main.c:1235)
+==73== LEAK SUMMARY:
+==73==    definitely lost: 80,000 bytes in 10 blocks
+==73== ERROR SUMMARY: 1 errors from 1 contexts (suppressed: 0 from 0)
+
+=== Valgrind: leaky_matmul ===
+==107== 1,600,000 bytes in 5 blocks are definitely lost in loss record 1,413 of 1,418
+==107==    by 0x566BB506: leaky_matmul (matrix_ops.c:62)
+==107==    by 0x49605F9: R_doDotCall (dotcode.c:757)
+==107==    by 0x4960B86: do_dotcall (dotcode.c:1437)
+==107==    by 0x49A8695: bcEval_loop (eval.c:8682)
+==107==    by 0x49B06C9: bcEval (eval.c:7515)
+==107==    by 0x49B06C9: bcEval (eval.c:7500)
+==107==    by 0x49B8B50: R_compileAndExecute (eval.c:1941)
+==107==    by 0x49B92E9: do_for (eval.c:2777)
+==107==    by 0x49B0E7F: Rf_eval (eval.c:1232)
+==107==    by 0x49EAC42: Rf_ReplIteration (main.c:264)
+==107==    by 0x49EB097: R_ReplConsole (main.c:317)
+==107==    by 0x49EB14F: run_Rmainloop (main.c:1235)
+==107== LEAK SUMMARY:
+==107==    definitely lost: 1,600,000 bytes in 5 blocks
+==107== ERROR SUMMARY: 1 errors from 1 contexts (suppressed: 0 from 0)
+
+=== Valgrind: slow_string_join ===
+==141== 10 bytes in 10 blocks are definitely lost in loss record 14 of 1,419
+==141==    by 0x566BB84D: slow_string_join (string_ops.c:29)
+==141==    by 0x49605F9: R_doDotCall (dotcode.c:757)
+==141==    by 0x4960B86: do_dotcall (dotcode.c:1437)
+==141==    by 0x49A8695: bcEval_loop (eval.c:8682)
+==141==    by 0x49B06C9: bcEval (eval.c:7515)
+==141==    by 0x49B06C9: bcEval (eval.c:7500)
+==141==    by 0x49B8B50: R_compileAndExecute (eval.c:1941)
+==141==    by 0x49B92E9: do_for (eval.c:2777)
+==141==    by 0x49B0E7F: Rf_eval (eval.c:1232)
+==141==    by 0x49EAC42: Rf_ReplIteration (main.c:264)
+==141==    by 0x49EB097: R_ReplConsole (main.c:317)
+==141==    by 0x49EB14F: run_Rmainloop (main.c:1235)
+==141== 20 bytes in 10 blocks are definitely lost in loss record 18 of 1,419
+==141==    by 0x566BB92E: slow_string_join (string_ops.c:42)
+==141==    by 0x49605F9: R_doDotCall (dotcode.c:757)
+==141==    by 0x4960B86: do_dotcall (dotcode.c:1437)
+==141==    by 0x49A8695: bcEval_loop (eval.c:8682)
+==141==    by 0x49B06C9: bcEval (eval.c:7515)
+==141==    by 0x49B06C9: bcEval (eval.c:7500)
+==141==    by 0x49B8B50: R_compileAndExecute (eval.c:1941)
+==141==    by 0x49B92E9: do_for (eval.c:2777)
+==141==    by 0x49B0E7F: Rf_eval (eval.c:1232)
+==141==    by 0x49EAC42: Rf_ReplIteration (main.c:264)
+==141==    by 0x49EB097: R_ReplConsole (main.c:317)
+==141==    by 0x49EB14F: run_Rmainloop (main.c:1235)
+==141== 7,000 bytes in 250 blocks are definitely lost in loss record 298 of 1,419
+==141==    by 0x566BB899: slow_string_join (string_ops.c:42)
+==141==    by 0x49605F9: R_doDotCall (dotcode.c:757)
+==141==    by 0x4960B86: do_dotcall (dotcode.c:1437)
+==141==    by 0x49A8695: bcEval_loop (eval.c:8682)
+==141==    by 0x49B06C9: bcEval (eval.c:7515)
+==141==    by 0x49B06C9: bcEval (eval.c:7500)
+==141==    by 0x49B8B50: R_compileAndExecute (eval.c:1941)
+==141==    by 0x49B92E9: do_for (eval.c:2777)
+==141==    by 0x49B0E7F: Rf_eval (eval.c:1232)
+==141==    by 0x49EAC42: Rf_ReplIteration (main.c:264)
+==141==    by 0x49EB097: R_ReplConsole (main.c:317)
+==141==    by 0x49EB14F: run_Rmainloop (main.c:1235)
+==141== LEAK SUMMARY:
+==141==    definitely lost: 7,030 bytes in 270 blocks
+==141== ERROR SUMMARY: 3 errors from 3 contexts (suppressed: 0 from 0)
+
+=== Overall leak totals ===
+--- leaky_matmul.txt ---
+==107==    definitely lost: 1,600,000 bytes in 5 blocks
+--- slow_sort.txt ---
+==73==    definitely lost: 80,000 bytes in 10 blocks
+--- slow_string_join.txt ---
+==141==    definitely lost: 7,030 bytes in 270 blocks
+
+── Linux perf cache statistics ──────────────────────────
+perf stat unavailable (likely a linuxkit / Docker Desktop kernel).
+Falling back to Google Performance Tools CPU profiler.
+
+Profiler library: /usr/lib/x86_64-linux-gnu/libprofiler.so.0
+
+=== gperftools: colsum_unfriendly ===
+Top functions by CPU samples:
+  Total: 151 samples
+       125  82.8%  82.8%      125  82.8% __GI_sched_yield
+         6   4.0%  86.8%        6   4.0% __memcpy_avx_unaligned_erms
+         4   2.6%  89.4%       15   9.9% cache_unfriendly_colsum
+         3   2.0%  91.4%        5   3.3% RunGenCollect (inline)
+         2   1.3%  92.7%      127  84.1% openblas_read_env
+         1   0.7%  93.4%        1   0.7% AgeNodeAndChildren
+         1   0.7%  94.0%        1   0.7% GetNewPage
+         1   0.7%  94.7%        1   0.7% LookupClassEntry
+         1   0.7%  95.4%        1   0.7% R_HashGet (inline)
+         1   0.7%  96.0%        1   0.7% __GI___libc_read
+         1   0.7%  96.7%        1   0.7% __GI___mmap64
+         1   0.7%  97.4%        1   0.7% __GI_munmap
+         1   0.7%  98.0%        1   0.7% _int_malloc
+         1   0.7%  98.7%       24  15.9% bcEval_loop
+
+=== gperftools: colsum_base ===
+Top functions by CPU samples:
+  Total: 141 samples
+       128  90.8%  90.8%      128  90.8% __GI_sched_yield
+         4   2.8%  93.6%        4   2.8% do_colsum._omp_fn.0
+         1   0.7%  94.3%        1   0.7% R_HashResize
+         1   0.7%  95.0%        1   0.7% R_XDRDecodeInteger
+         1   0.7%  95.7%        1   0.7% Rf_runif
+         1   0.7%  96.5%        1   0.7% SET_PRCODE
+         1   0.7%  97.2%        1   0.7% VECSUBSET_PTR
+         1   0.7%  97.9%        1   0.7% VECTOR_ELT
+         1   0.7%  98.6%        1   0.7% libdeflate_set_memory_allocator
+         1   0.7%  99.3%        2   1.4% random2
+         1   0.7% 100.0%        1   0.7% strcmp
+         0   0.0% 100.0%        1   0.7% AddDLL
+         0   0.0% 100.0%        2   1.4% CallHook
+         0   0.0% 100.0%        4   2.8% GOMP_parallel@@GOMP_4.0
+
+=== gperftools: sort_bubble ===
+Top functions by CPU samples:
+  Total: 247 samples
+       129  52.2%  52.2%      129  52.2% __GI_sched_yield
+       108  43.7%  96.0%      108  43.7% slow_sort
+         2   0.8%  96.8%      131  53.0% openblas_read_env
+         1   0.4%  97.2%        1   0.4% BuiltinNames.constprop.0
+         1   0.4%  97.6%        1   0.4% Rf_findVarInFrame3
+         1   0.4%  98.0%        1   0.4% __GI___fstatat64
+         1   0.4%  98.4%        1   0.4% __memcpy_avx_unaligned_erms
+         1   0.4%  98.8%        1   0.4% _int_malloc
+         1   0.4%  99.2%      116  47.0% bcEval_loop
+         1   0.4%  99.6%        1   0.4% check_match
+         1   0.4% 100.0%        1   0.4% make_applyClosure_env
+         0   0.0% 100.0%        1   0.4% AddDLL
+         0   0.0% 100.0%        1   0.4% CONS_NR
+         0   0.0% 100.0%        1   0.4% CallHook
+
+=== gperftools: sort_base ===
+Top functions by CPU samples:
+  Total: 139 samples
+       128  92.1%  92.1%      128  92.1% __GI_sched_yield
+         4   2.9%  95.0%      132  95.0% openblas_read_env
+         1   0.7%  95.7%        2   1.4% R_HashResize
+         1   0.7%  96.4%        1   0.7% R_XDRDecodeInteger
+         1   0.7%  97.1%        2   1.4% ReadItem_Recursive
+         1   0.7%  97.8%        1   0.7% Rf_length (inline)
+         1   0.7%  98.6%        1   0.7% Rf_matchArgs_NR
+         1   0.7%  99.3%        1   0.7% dinsert
+         1   0.7% 100.0%        1   0.7% setup_vcache (inline)
+         0   0.0% 100.0%        1   0.7% CallHook
+         0   0.0% 100.0%        1   0.7% InInteger
+         0   0.0% 100.0%        1   0.7% InStringVec
+         0   0.0% 100.0%        1   0.7% PersistentRestore (inline)
+         0   0.0% 100.0%        3   2.2% R_ReplConsole
+
+All profile files in /workspace/perf_reports/
+Interactive flame graph (if graphviz is installed):
+  google-pprof --pdf /usr/local/lib/R/bin/exec/R /workspace/perf_reports/sort_bubble.prof* > /workspace/sort_bubble.pdf
+
+All done.  Reports are in /workspace/valgrind_reports/ and /workspace/perf_reports/
+To run the interactive profvis session:  Rscript /usr/local/lib/R/site-library/profdemo/demo/01_profvis_demo.R
